@@ -69,8 +69,6 @@ typedef struct {
   unsigned short time[2];
 } superblock_type;
 
-superblock_type superBlock;
-
 // I-Node Structure
 typedef struct {
   unsigned short flags;
@@ -83,21 +81,12 @@ typedef struct {
   unsigned short modtime[2];
 } inode_type; 
 
-inode_type dirInode;
-unsigned short dir_inode_entry;
-inode_type fileInode;
-
 // Directory structure
 typedef struct {
   unsigned short inode;
   unsigned char filename[14];
 } dir_type;
 
-dir_type root;
-
-char v6FileName[14];        // current working v6 file system
-
-int fileDescriptor ;		//file descriptor 
 const unsigned short inode_alloc_flag = 0100000;
 const unsigned short dir_flag = 040000;
 const unsigned short dir_large_file = 010000;
@@ -105,21 +94,22 @@ const unsigned short plain_file_flag = 000000;
 const unsigned short dir_access_rights = 000777; // User, Group, & World have all access privileges 
 const unsigned short INODE_SIZE = 64; // inode has been doubled
 
-// function defined
-void setFilename(char *parameters);
+// supporting global variables
+superblock_type superBlock;
+inode_type dirInode;
+inode_type fileInode;
+dir_type root;
+
+unsigned short dir_inode_entry;
+
+char v6FileName[14];        // current working v6 file system
+
+int fileDescriptor ;		//file descriptor
+
+// initialization functions
 int preInitialization(char *parameters);
 int initfs(char* path, unsigned short total_blcks,unsigned short total_inodes);
-void add_block_to_free_list( int blocknumber , unsigned int *empty_buffer);
 void create_root();
-
-// functions that support main functions
-void showSuper();
-void readSuper();
-void readDirInode(unsigned short entry);
-void readFileInode(unsigned short entry);
-unsigned short getFreeInode();
-void add_to_inode_list(unsigned short inode_entry);
-unsigned int getFreeBlock();
 
 // copy in and copy out
 int copyIn(char *parameters);
@@ -139,6 +129,17 @@ void rmPlainFile();
 //cd and ls 
 unsigned int changeDir(char *parameters);
 void displayFilesInDir();
+
+// functions that support main functions
+void setFilename(char *parameters);
+void showSuper();
+void readSuper();
+void readDirInode(unsigned short entry);
+void readFileInode(unsigned short entry);
+unsigned short getFreeInode();
+void add_to_inode_list(unsigned short inode_entry);
+unsigned int getFreeBlock();
+void add_block_to_free_list( int blocknumber , unsigned int *empty_buffer);
 
 /**********************************************************************************************************/
 /* main execution function */
@@ -314,7 +315,6 @@ unsigned int createDir(char *parameters){
   */
 
   // dirInode is corresponding to currDirPath
-  printf("commands: %s\n",parameters);
   
   char *dir_name;
   dir_name = strtok_r(NULL, "/", &parameters);
@@ -322,51 +322,52 @@ unsigned int createDir(char *parameters){
     printf("Directory names cannot exceed 14 characters");
     return 1;
   }
-  printf("Executing directory name: %s\n",dir_name);
   if (parameters != NULL && parameters[0]=='\0')
     parameters = NULL;
-  printf("Left commands: %s\n\n",parameters);
+  /*printf("commands: %s\n",parameters);
+  printf("Executing directory name: %s\n",dir_name);
+  printf("Left commands: %s\n\n",parameters);*/
   
   // go to current directory
   char existFilename[14];
-  unsigned short countDir = 0;          // used to jump to the next dirInode.addr[] data block
+  unsigned short countDir = 2;          // used to jump to the next dirInode.addr[] data block
   unsigned short num_dir_inode_addr = 0;
 
-  lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE+2, 0);
+  lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE+countDir*16, 0);
+  read(fileDescriptor, &dir_inode_entry, 2);
   read(fileDescriptor, existFilename, 14);
 
   while(existFilename[0] != '\0'){
+    if (strcmp(existFilename, dir_name) == 0){
+      unsigned short flag;
+      lseek(fileDescriptor, 2*BLOCK_SIZE+(dir_inode_entry-1)*INODE_SIZE,0);
+      read(fileDescriptor,&flag,2);
+      if(flag >= (inode_alloc_flag | dir_flag)){
+        printf("\nfilename of the v6-directory is found!\n");
+        break;
+      }
+      else {
+        printf("\nfilename is v6-file, but not directory type!Keep finding......\n");
+      }
+    }
+
+    lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE + (++countDir)*16, SEEK_SET);
+    
     if (countDir == BLOCK_SIZE / 16){
       // only when number of data blocks > 1
       countDir = 0;
       lseek(fileDescriptor, dirInode.addr[++num_dir_inode_addr]*BLOCK_SIZE, SEEK_SET);
     }
 
-    printf("Existing filename: %s\n",existFilename);
-    if (strcmp(existFilename, dir_name) == 0){
-      unsigned short flag;
-      lseek(fileDescriptor, 2*BLOCK_SIZE+(dir_inode_entry-1)*INODE_SIZE,0);
-      read(fileDescriptor,&flag,2);
-      if(flag >= (inode_alloc_flag | dir_flag)){
-        printf("\n filename of the v6-directory is found!\n");
-        break;
-      }
-      else {
-        printf("\n filename is v6-file, but not directory type!Keep finding......\n");
-        lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE + (++countDir)*16, SEEK_SET);
-      }
-    }
-    
     read(fileDescriptor, &dir_inode_entry, 2);
     read(fileDescriptor, existFilename, 14);
-    ++countDir;
   }
 
   if (existFilename[0] != '\0')
-    printf("\n File directory %s already exist\n", dir_name);
+    printf("\nFile directory %s already exist\n", dir_name);
   else{ 
     dir_inode_entry = addDir(num_dir_inode_addr, countDir, dir_name);
-    printf("\n New file directory %s is created, inode-entry: %hu\n", dir_name, dir_inode_entry);
+    //printf("\nNew file directory %s is created, inode-entry: %hu\n", dir_name, dir_inode_entry);
   }
   readDirInode(dir_inode_entry);    // load the directory inode information for the next createDir call
   
@@ -497,13 +498,6 @@ unsigned int removeFile(char *rmFileName){
   read(fileDescriptor, existFilename, 14);
 
   while(existFilename[0] != '\0'){
-    if (countDir == BLOCK_SIZE / 16){
-      // only when number of data blocks > 1
-      countDir = 0;
-      lseek(fileDescriptor, dirInode.addr[++num_dir_inode_addr]*BLOCK_SIZE, SEEK_SET);
-    }
-
-    printf("Existing filename: %s\n",existFilename);
     if (strcmp(existFilename, rmFileName) == 0){
       unsigned short flag;
       lseek(fileDescriptor, 2*BLOCK_SIZE+(rm_file_inode_entry-1)*INODE_SIZE,0);
@@ -511,32 +505,39 @@ unsigned int removeFile(char *rmFileName){
       
       // dir and plain type files won't have the same name
       if(flag >= (inode_alloc_flag | dir_flag)){
-        printf("\n Deleted file type is a directory!\n");
+        printf("\nDeleted file type is a directory!\n");
         readFileInode(rm_file_inode_entry);
         unsigned short file_entry;
         lseek(fileDescriptor, fileInode.addr[0]*BLOCK_SIZE + 16*2,SEEK_SET);
         read(fileDescriptor, &file_entry, 2);
         if (file_entry != 0){
-          printf("But the directory is not empty! Can't be deleted\n");
-          return 0;
+          printf("But the directory is not empty. Can't be deleted! Keep finding...\n");
+        } else {
+          rmEmptyDir();
+          break;
         }
-        rmEmptyDir();
-      }
-      else {
-        printf("\n deleted file type is a plain file!\n");
+      } else {
+        printf("\nDeleted file type is a plain file!\n");
         readFileInode(rm_file_inode_entry);
         rmPlainFile();
+        break;
       }
-      break;
     }
     
+    lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE + (++countDir)*16, SEEK_SET);
+
+    if (countDir == BLOCK_SIZE / 16){
+      // only when number of data blocks > 1
+      countDir = 0;
+      lseek(fileDescriptor, dirInode.addr[++num_dir_inode_addr]*BLOCK_SIZE, SEEK_SET);
+    }
+
     read(fileDescriptor, &rm_file_inode_entry, 2);
     read(fileDescriptor, existFilename, 14);
-    ++countDir;
   }
 
   if (existFilename[0] == '\0')
-    printf("\n File doesn't exist\n");
+    printf("\nCorresponding file is not found!\n");
   
   // free the inode entry
   add_to_inode_list(rm_file_inode_entry);
@@ -600,8 +601,6 @@ unsigned int changeDir(char *parameters){
   */
   if (parameters == NULL)
     return 1;
-
-  printf("commands: %s\n",parameters);
   
   char *dir_name, existFilename[14], copySys[15];
   dir_name = strtok_r(NULL, "/", &parameters);
@@ -609,10 +608,12 @@ unsigned int changeDir(char *parameters){
     printf("Directory names cannot exceed 14 characters");
     return 1;
   }
-  printf("Executing directory name: %s\n",dir_name);
   if (parameters != NULL && parameters[0]=='\0')
     parameters = NULL;
-  printf("Left commands: %s\n\n",parameters);
+  
+  /*printf("commands: %s\n",parameters);
+  printf("Executing directory name: %s\n",dir_name);
+  printf("Left commands: %s\n\n",parameters);*/
 
   unsigned short tmp_dir_inode_entry = dir_inode_entry;
   
@@ -635,19 +636,12 @@ unsigned int changeDir(char *parameters){
     read(fileDescriptor, existFilename, 14);
 
     while(existFilename[0] != '\0'){
-      if (countDir == BLOCK_SIZE / 16){
-        // when number of data blocks > 1
-        countDir = 0;
-        lseek(fileDescriptor, dirInode.addr[++num_dir_inode_addr]*BLOCK_SIZE, SEEK_SET);
-      }
-
-      printf("Existing filename: %s\n",existFilename);
       if (strcmp(existFilename, dir_name) == 0){
         unsigned short flag;
         lseek(fileDescriptor, 2*BLOCK_SIZE+(dir_inode_entry-1)*INODE_SIZE,0);
         read(fileDescriptor,&flag,2);
         if(flag >= (inode_alloc_flag | dir_flag)){
-          printf("\n filename of the v6-directory is found!\n");
+          printf("\nFilename of the v6-directory is found!\n");
           readDirInode(dir_inode_entry);
 
           if (strcmp(dir_name, ".") == 0) // directory itself, do nothing
@@ -680,14 +674,20 @@ unsigned int changeDir(char *parameters){
           break;
         }
         else {
-          printf("\n filename is v6-file, but not directory type!Keep finding......\n");
-          lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE + (++countDir)*16, SEEK_SET);
+          printf("\nFilename is v6-file, but not directory type!Keep finding......\n");
         }
       }
       
+      lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE + (++countDir)*16, SEEK_SET);
+
+      if (countDir == BLOCK_SIZE / 16){
+        // when number of data blocks > 1
+        countDir = 0;
+        lseek(fileDescriptor, dirInode.addr[++num_dir_inode_addr]*BLOCK_SIZE, SEEK_SET);
+      }
+
       read(fileDescriptor, &dir_inode_entry, 2);
       read(fileDescriptor, existFilename, 14);
-      ++countDir;
     }
 
     if (existFilename[0] == '\0' || !changeDir(parameters)){
@@ -713,7 +713,6 @@ void displayFilesInDir(){
   lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE+32, 0);
   read(fileDescriptor, &tmp_inode_entry, 2);
   read(fileDescriptor, existFilename, 14);
-  printf("Existing file:  \n");
 
   while(existFilename[0] != '\0'){
     if (countDir%4 == 2)
@@ -1092,7 +1091,6 @@ int copyIn(char *parameters) {
   
   if((fileDescriptor = open(v6FileName,O_RDWR,0700))== -1){
     printf("\n v6 file system open() failed with the following error [%s]\n",strerror(errno));
-    printf("The current v6 file path (name) is %s\n",v6FileName);
     return 0;
   }
   
@@ -1101,27 +1099,39 @@ int copyIn(char *parameters) {
   
   // go to first data block to see if the v6-filename already exist (future improvement: handle number of root data blocks > 1)
   char existFilename[14];
+  unsigned short file_entry;
   unsigned int countDir = 0;            // used ti jump to the next dirInode.addr[] data block adn track the position in current data block
   unsigned short num_dir_inode_addr = 0;
 
-  lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE + 2, 0);
+  lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE, 0);
+  read(fileDescriptor, &file_entry, 2);
   read(fileDescriptor, existFilename, 14);
   
   while(existFilename[0] != '\0'){
+    //printf("Existing filename: %s\n",existFilename);
+    if (strcmp(existFilename, vFile) == 0){
+      unsigned short flag;
+      lseek(fileDescriptor, 2*BLOCK_SIZE+(file_entry-1)*INODE_SIZE,0);
+      read(fileDescriptor,&flag,2);
+      if(flag >= (inode_alloc_flag | dir_flag)){
+        printf("\nFilename is directory type. Keep finding...\n");
+      }
+      else {
+        printf("\nFilename of the v6-File is already exist! copy in failed! Abort....\n");
+        return 0;
+      }
+    }
+
+    lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE + (++countDir)*16, 0);
+
     if (countDir == BLOCK_SIZE / 16){
       // only when number of data blocks > 1
       countDir = 0;
       lseek(fileDescriptor, dirInode.addr[++num_dir_inode_addr]*BLOCK_SIZE, SEEK_SET);
     }
 
-    printf("Existing filename: %s\n",existFilename);
-    if (strcmp(existFilename, vFile) == 0){
-      printf("\n filename of the v6-File is already exist! copy in failed! Abort....\n");
-      return 0;
-    }
     lseek(fileDescriptor, 2, SEEK_CUR);
     read(fileDescriptor, existFilename, 14);
-    ++countDir;
   }
 
   // open the external file and check if exist
@@ -1196,7 +1206,7 @@ int copyIn(char *parameters) {
   }
 
   // modify the i-node of the directory (specifically only its addr, because the number of file in the root could be larger than 64)
-  if (countDir == BLOCK_SIZE / 16){
+  if (countDir == 0){
     // the current root data block happens to be full, get the new free block for directory
     // num_dir_inode_addr: current number of full data blocks that belongs to the directory
     // update Inode of the directory
@@ -1269,27 +1279,35 @@ int copyOut(char *parameters) {
   read(fileDescriptor, existFilename, 14);
 
   while(existFilename[0] != '\0'){
+    //printf("Existing filename: %s\n",existFilename);
+    if (strcmp(existFilename, vFile) == 0){
+      unsigned short flag;
+      lseek(fileDescriptor, 2*BLOCK_SIZE+(file_inode_entry-1)*INODE_SIZE,0);
+      read(fileDescriptor,&flag,2);
+      if(flag >= (inode_alloc_flag | dir_flag)){
+        printf("\nFilename is directory type. Keep finding...\n");
+      }
+      else {
+        printf("\nFilename of the v6-File is found! Ready to copy out!\n");
+        break;
+      }
+    }
+
+    lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE + (++countDir)*16, 0);
+
     if (countDir == BLOCK_SIZE / 16){
       // only when number of data blocks > 1
       countDir = 0;
       lseek(fileDescriptor, dirInode.addr[++num_dir_inode_addr]*BLOCK_SIZE, SEEK_SET);
     }
 
-    printf("Existing filename: %s\n",existFilename);
-    if (strcmp(existFilename, vFile) == 0){
-      printf("\n filename of the v6-File is found! Ready to copy out!\n");
-      break;
-    }
-
     read(fileDescriptor, &file_inode_entry, 2);
     read(fileDescriptor, existFilename, 14);
-
-    ++countDir;
   }
 
   // if no such file name exist in v6 file system, break
   if (existFilename[0] == '\0'){
-    printf("\n filename of the v6-File is not found! Abort...\n");
+    printf("\nFilename of the v6-File is not found! Abort...\n");
     return 0;
   }
   
