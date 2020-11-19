@@ -112,23 +112,198 @@ int initfs(char* path, unsigned short total_blcks,unsigned short total_inodes);
 void add_block_to_free_list( int blocknumber , unsigned int *empty_buffer);
 void create_root();
 
+// functions that support main functions
 void showSuper();
 void readSuper();
 void readDirInode(unsigned short entry);
 void readFileInode(unsigned short entry);
-unsigned int getInodeAddr(unsigned short inode_entry, unsigned short num_inode_addr);
-unsigned int getFreeBlock();
 unsigned short getFreeInode();
+void add_to_inode_list(unsigned short inode_entry);
+unsigned int getFreeBlock();
 
+// copy in and copy out
 int copyIn(char *parameters);
 int copyOut(char *parameters);
 
-char currDirPath[50];           // current working path in v6 file system
+char currDirPath[80];           // current working path in v6 file system
+
+// mkdir functions
 unsigned int createDir(char *parameters);
 unsigned short addDir(unsigned short num_dir_inode_addr, unsigned short dir_pos_in_data_blcok, char *newDirName);
+
+// functions related to remove 
 unsigned int removeFile(char *rmFileName);
+void rmEmptyDir();
+void rmPlainFile();
+
+//cd and ls 
 unsigned int changeDir(char *parameters);
 void displayFilesInDir();
+
+/**********************************************************************************************************/
+/* main execution function */
+int main() {
+ 
+  char input[INPUT_SIZE];
+  char *splitter;
+  unsigned int numBlocks = 0, numInodes = 0;
+  char *filepath;
+  printf("Size of super block = %d , size of i-node = %d\n",sizeof(superBlock),sizeof(dirInode));
+  printf("");
+  while(1) {
+    printf("\nEnter command or 'help' for command instruction:\n");
+    printf(currDirPath);
+    printf("\n");
+    printf("-$ ");
+
+    scanf(" %[^\n]s", input);
+    splitter = strtok(input," ");
+    
+    if(strcmp(splitter, "initfs") == 0){
+    
+        preInitialization(splitter);
+        splitter = NULL;
+                       
+    } else if (strcmp(splitter, "v6Name") == 0){
+        splitter = strtok(NULL, " ");
+        setFilename(splitter);
+        splitter = NULL;
+
+    } else if (strcmp(splitter, "cpin") == 0) {
+
+        if (v6FileName == NULL || v6FileName[0] == '\0'){
+          printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
+          continue;
+        }
+
+        if (copyIn(splitter)){
+          printf("\nSuccessfully copy in!\n");
+        }
+        
+        splitter = NULL;
+
+    } else if (strcmp(splitter, "cpout") == 0) {
+
+        if (v6FileName == NULL || v6FileName[0] == '\0'){
+          printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
+          continue;
+        }
+
+        if (copyOut(splitter)){
+          printf("\nSuccessfully copy out!\n");
+        }
+        
+        splitter = NULL;
+
+    } else if (strcmp(splitter, "rm") == 0){
+      
+      if (v6FileName == NULL || v6FileName[0] == '\0'){
+        printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
+        continue;
+      }
+
+      splitter = strtok(NULL, " ");
+      if (removeFile(splitter))
+        printf("\nFile successfully removed!\n");
+
+      splitter = NULL;
+
+    } else if (strcmp(splitter, "mkdir") == 0){
+      
+      if (v6FileName == NULL || v6FileName[0] == '\0'){
+        printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
+        continue;
+      }
+
+      splitter = strtok(NULL, " ");
+      if(createDir(splitter)==0)
+        printf("\nDirectory successfully created!\n");
+      splitter = NULL;
+
+    } else if (strcmp(splitter, "cd") == 0){
+      
+      if (v6FileName == NULL || v6FileName[0] == '\0'){
+        printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
+        continue;
+      }
+
+      splitter = strtok(NULL, " ");
+      if(!changeDir(splitter))
+        printf("Certain file directory is not found!");
+
+      splitter = NULL;
+
+    } else if (strcmp(splitter, "ls") == 0){
+
+      if (v6FileName == NULL || v6FileName[0] == '\0'){
+        printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
+        continue;
+      }
+
+      displayFilesInDir();
+
+      splitter = NULL;
+
+    } else if (strcmp(splitter, "help") == 0){
+
+        printf("\nInitalization v6 file system: initfs <filename> <# of block> <# of i-nodes>\n");
+        printf("\nChoose the v6 file system: v6Name <filename>\n");
+        printf("\nCopy external file into v6 file system: cpin <externalfile> <v6-file>\n");
+        printf("\nCopy file in v6 file system out to external file: cpout <v6-file> <externalfile>\n");
+        printf("\nRemove file: rm <v6-file>\n");
+        printf("\nCreate new directory: mkdir <v6dir>\n");
+        printf("\nChange current directory: cd <v6dir>\n");
+        printf("\nDisplay files in current directory: ls\n");
+        printf("\nExit the program: q\n");
+        splitter = NULL;
+
+    } else if (strcmp(splitter, "q") == 0) {
+   
+       lseek(fileDescriptor, BLOCK_SIZE, SEEK_SET);
+       write(fileDescriptor, &superBlock, BLOCK_SIZE);
+       return 0;
+    }
+  }
+}
+/**********************************************************************************************************/
+
+void setFilename(char *parameters){
+  /* 
+  * Set up the name of the v6 file system
+  * Read the superBlock info in the corresponding v6 file system
+  */
+
+  int i,j;
+  
+  if (currDirPath != NULL)
+    memset(currDirPath, 0, strlen(currDirPath));
+
+  for (i = 0; i < 14; i++){
+    if (parameters[i] == '\0'){
+      j = i;
+      currDirPath[j] = ':';
+      currDirPath[++j] = '/';
+
+      for (j = i; j < 14; j++)
+        v6FileName[j] = '\0';
+      break;
+    }
+    v6FileName[i] = parameters[i];
+    currDirPath[i] = parameters[i];
+  }
+
+  if((fileDescriptor = open(v6FileName,O_RDWR,0700))== -1) {
+    printf("\n No such file exist or open() failed with the following error [%s]\n",strerror(errno));
+    v6FileName[0] = '\0';
+    return;
+  }
+
+  printf("The current v6 file path (name) is %s\n",v6FileName);
+  
+  readSuper();
+  showSuper();
+  readDirInode(1);
+}
 
 unsigned int createDir(char *parameters){
   /*
@@ -143,8 +318,13 @@ unsigned int createDir(char *parameters){
   
   char *dir_name;
   dir_name = strtok_r(NULL, "/", &parameters);
+  if(strlen(dir_name) > 14){
+    printf("Directory names cannot exceed 14 characters");
+    return 1;
+  }
   printf("Executing directory name: %s\n",dir_name);
-  
+  if (parameters != NULL && parameters[0]=='\0')
+    parameters = NULL;
   printf("Left commands: %s\n\n",parameters);
   
   // go to current directory
@@ -298,8 +478,13 @@ unsigned short addDir(unsigned short num_dir_inode_addr, unsigned short dir_pos_
 unsigned int removeFile(char *rmFileName){
   /*
   * remove a file (filepath) starts from current directory path
-  * if a directory contains no plain files, it can't be deleted, otherwise not.
+  * if a directory contains no plain files, it can be deleted, otherwise not.
   */  
+
+  if(strlen(rmFileName) > 14){
+    printf("v6 filename cannot exceed 14 characters");
+    return 1;
+  }
   
   /*** go to the current directory path to check if v6 file exist, if file not exist, abort ***/
   char existFilename[14];
@@ -324,14 +509,24 @@ unsigned int removeFile(char *rmFileName){
       lseek(fileDescriptor, 2*BLOCK_SIZE+(rm_file_inode_entry-1)*INODE_SIZE,0);
       read(fileDescriptor,&flag,2);
       
-      // no case of duplicate names in both dir and plain type files 
+      // dir and plain type files won't have the same name
       if(flag >= (inode_alloc_flag | dir_flag)){
-        printf("\n deleted file type is a directory!\n");
+        printf("\n Deleted file type is a directory!\n");
+        readFileInode(rm_file_inode_entry);
+        unsigned short file_entry;
+        lseek(fileDescriptor, fileInode.addr[0]*BLOCK_SIZE + 16*2,SEEK_SET);
+        read(fileDescriptor, &file_entry, 2);
+        if (file_entry != 0){
+          printf("But the directory is not empty! Can't be deleted\n");
+          return 0;
+        }
+        rmEmptyDir();
       }
       else {
         printf("\n deleted file type is a plain file!\n");
+        readFileInode(rm_file_inode_entry);
+        rmPlainFile();
       }
-
       break;
     }
     
@@ -342,20 +537,60 @@ unsigned int removeFile(char *rmFileName){
 
   if (existFilename[0] == '\0')
     printf("\n File doesn't exist\n");
+  
+  // free the inode entry
+  add_to_inode_list(rm_file_inode_entry);
 
-  /*** go to the corresdoning v6 file and start deleting ***/
-  
+  // delete the directory type (16 bytes) in parent directory and move one directory ahead after it
+  unsigned int i,buffer[4];
+  for (i = 0; i < 4; i++)
+    buffer[i] = 0;
+  lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE + countDir*16, SEEK_SET);
+  write(fileDescriptor, buffer, 16);
 
+  dir_type tmp_dir;
+  read(fileDescriptor, &tmp_dir.inode, 2);
+  read(fileDescriptor, tmp_dir.filename, 14);
+  while (tmp_dir.inode != 0){
+    lseek(fileDescriptor, dirInode.addr[num_dir_inode_addr]*BLOCK_SIZE + (countDir++)*16, SEEK_SET);
+    write(fileDescriptor, &tmp_dir, 16);
+    write(fileDescriptor, buffer, 16);
+    read(fileDescriptor, &tmp_dir.inode, 2);
+    read(fileDescriptor, tmp_dir.filename, 14);
+  }
+  
+}
 
-  // go to the inode entry of the v6 file, find data blocks in inode.addr[] and free them
-  // do we add those freed data blocks into superBlock.free?
-  
-  
-  
-  
-  // free the inode entry and directory type in working directory data block
-  
-  
+void rmEmptyDir(){
+  /*
+  * This function is responsible for freeing data block of empty directory type file
+  */
+  unsigned int i,buffer[BLOCK_SIZE/4];
+  for (i = 0; i < BLOCK_SIZE/4; i++) 
+    buffer[i] = 0;
+  add_block_to_free_list(fileInode.addr[0], buffer);
+
+  // save superblock to system
+  lseek(fileDescriptor, BLOCK_SIZE, SEEK_SET);
+  write(fileDescriptor, &superBlock, BLOCK_SIZE);
+}
+
+void rmPlainFile(){
+  /*
+  * This function is responsible for freeing data block of plain type file
+  */
+  unsigned int i,buffer[BLOCK_SIZE/4];
+  for (i = 0; i < BLOCK_SIZE/4; i++) 
+    buffer[i] = 0;
+
+  for (i = 0; i < ADDR_SIZE; i++){
+    if (fileInode.addr[i] != 0)
+      add_block_to_free_list(fileInode.addr[i],buffer);
+  }
+
+  // save superblock to system
+  lseek(fileDescriptor, BLOCK_SIZE, SEEK_SET);
+  write(fileDescriptor, &superBlock, BLOCK_SIZE);
 }
 
 unsigned int changeDir(char *parameters){
@@ -368,18 +603,24 @@ unsigned int changeDir(char *parameters){
 
   printf("commands: %s\n",parameters);
   
-  char *dir_name, existFilename[14];
+  char *dir_name, existFilename[14], copySys[15];
   dir_name = strtok_r(NULL, "/", &parameters);
+  if(strlen(dir_name) > 14){
+    printf("Directory names cannot exceed 14 characters");
+    return 1;
+  }
   printf("Executing directory name: %s\n",dir_name);
-  
+  if (parameters != NULL && parameters[0]=='\0')
+    parameters = NULL;
   printf("Left commands: %s\n\n",parameters);
 
   unsigned short tmp_dir_inode_entry = dir_inode_entry;
-
-  if (strcmp(v6FileName, dir_name) == 0){
+  
+  strcpy(copySys,v6FileName);
+  if (strcmp(strcat(copySys,":"), dir_name) == 0){
 
     // if the directory is the system name, it starts from root 
-    setFilename(dir_name);
+    setFilename(v6FileName);
     
     if (!changeDir(parameters))
       return 0;
@@ -502,171 +743,6 @@ void displayFilesInDir(){
 
 }
 
-
-int main() {
- 
-  char input[INPUT_SIZE];
-  char *splitter;
-  unsigned int numBlocks = 0, numInodes = 0;
-  char *filepath;
-  printf("Size of super block = %d , size of i-node = %d\n",sizeof(superBlock),sizeof(dirInode));
-  printf("");
-  while(1) {
-    printf("\nEnter command or 'help' for command instruction:\n");
-    printf(currDirPath);
-    printf("\n");
-    printf("-$ ");
-
-    scanf(" %[^\n]s", input);
-    splitter = strtok(input," ");
-    
-    if(strcmp(splitter, "initfs") == 0){
-    
-        preInitialization(splitter);
-        splitter = NULL;
-                       
-    } else if (strcmp(splitter, "v6Name") == 0){
-        splitter = strtok(NULL, " ");
-        setFilename(splitter);
-        splitter = NULL;
-
-    } else if (strcmp(splitter, "cpin") == 0) {
-
-        if (v6FileName == NULL || v6FileName[0] == '\0'){
-          printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
-          continue;
-        }
-
-        if (copyIn(splitter)){
-          printf("\nSuccessfully copy in!\n");
-        }
-        
-        splitter = NULL;
-
-    } else if (strcmp(splitter, "cpout") == 0) {
-
-        if (v6FileName == NULL || v6FileName[0] == '\0'){
-          printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
-          continue;
-        }
-
-        if (copyOut(splitter)){
-          printf("\nSuccessfully copy out!\n");
-        }
-        
-        splitter = NULL;
-
-    } else if (strcmp(splitter, "rm") == 0){
-      
-      if (v6FileName == NULL || v6FileName[0] == '\0'){
-        printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
-        continue;
-      }
-
-      splitter = strtok(NULL, " ");
-      if (removeFile(splitter))
-      printf("\nFile successfully removed!\n");
-
-      splitter = NULL;
-
-    } else if (strcmp(splitter, "mkdir") == 0){
-      
-      if (v6FileName == NULL || v6FileName[0] == '\0'){
-        printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
-        continue;
-      }
-
-      splitter = strtok(NULL, " ");
-      if(createDir(splitter))
-        printf("\nDirectory successfully created!\n");
-
-      splitter = NULL;
-
-    } else if (strcmp(splitter, "cd") == 0){
-      
-      if (v6FileName == NULL || v6FileName[0] == '\0'){
-        printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
-        continue;
-      }
-
-      splitter = strtok(NULL, " ");
-      if(!changeDir(splitter))
-        printf("Certain file directory is not found!");
-
-      splitter = NULL;
-
-    } else if (strcmp(splitter, "ls") == 0){
-
-      if (v6FileName == NULL || v6FileName[0] == '\0'){
-        printf("Choose a v6-file system by entering filename of it using command: v6Name <filename>\n");
-        continue;
-      }
-
-      displayFilesInDir();
-
-      splitter = NULL;
-
-    } else if (strcmp(splitter, "help") == 0){
-
-        printf("\nInitalization v6 file system: initfs <filename> <# of block> <# of i-nodes>\n");
-        printf("\nChoose the v6 file system: v6Name <filename>\n");
-        printf("\nCopy external file into v6 file system: cpin <externalfile> <v6-file>\n");
-        printf("\nCopy file in v6 file system out to external file: cpout <v6-file> <externalfile>\n");
-        printf("\nRemove file: rm <v6-file>\n");
-        printf("\nCreate new directory: mkdir <v6dir>\n");
-        printf("\nChange current directory: cd <v6dir>\n");
-        printf("\nDisplay files in current directory: ls\n");
-        printf("\nExit the program: q\n");
-        splitter = NULL;
-
-    } else if (strcmp(splitter, "q") == 0) {
-   
-       lseek(fileDescriptor, BLOCK_SIZE, SEEK_SET);
-       write(fileDescriptor, &superBlock, BLOCK_SIZE);
-       return 0;
-    }
-  }
-}
-
-
-void setFilename(char *parameters){
-  /* 
-  * Set up the name of the v6 file system
-  * Read the superBlock info in the corresponding v6 file system
-  */
-
-  int i,j;
-  
-  if (currDirPath != NULL)
-    memset(currDirPath, 0, strlen(currDirPath));
-
-  for (i = 0; i < 14; i++){
-    if (parameters[i] == '\0'){
-      j = i;
-      currDirPath[j] = ':';
-      currDirPath[++j] = '/';
-
-      for (j = i; j < 14; j++)
-        v6FileName[j] = '\0';
-      break;
-    }
-    v6FileName[i] = parameters[i];
-    currDirPath[i] = parameters[i];
-  }
-
-  if((fileDescriptor = open(v6FileName,O_RDWR,0700))== -1) {
-    printf("\n No such file exist or open() failed with the following error [%s]\n",strerror(errno));
-    v6FileName[0] = '\0';
-    return;
-  }
-
-  printf("The current v6 file path (name) is %s\n",v6FileName);
-  
-  readSuper();
-  showSuper();
-  readDirInode(1);
-}
-
 int preInitialization(char *parameters){
   /* 
   * Decode the input parameters
@@ -745,7 +821,7 @@ int initfs(char* path, unsigned short blocks,unsigned short inodes) {
   superBlock.nfree = 0;
   superBlock.ninode = I_SIZE;
   if (inodes <= I_SIZE)
-  superBlock.ninode = inodes;
+    superBlock.ninode = inodes;
   
   for (i = 0; i < superBlock.ninode; i++)
     superBlock.inode[i] = superBlock.ninode - i;		//Initializing the inode array to corresponding inode numbers
@@ -918,7 +994,6 @@ void readFileInode(unsigned short entry){
   /*
    * load the file I-node info according to the I-node number
   */
-
   lseek(fileDescriptor, 2*BLOCK_SIZE+INODE_SIZE*(entry-1), SEEK_SET);
 
   read(fileDescriptor, &fileInode.flags, 2);
@@ -930,6 +1005,22 @@ void readFileInode(unsigned short entry){
   read(fileDescriptor, &fileInode.actime, 4);
   read(fileDescriptor, &fileInode.modtime, 4);
 
+}
+
+void add_to_inode_list(unsigned short inode_entry){
+  /*
+  * This function is responsible for deleting inode and adding free inode entry to superblock
+  */
+  unsigned int i,buffer[INODE_SIZE/4];
+  for (i = 0; i < INODE_SIZE/4; i++) 
+    buffer[i] = 0;
+  lseek(fileDescriptor, 2 * BLOCK_SIZE + (inode_entry-1)*INODE_SIZE, SEEK_SET);
+  write(fileDescriptor, buffer, INODE_SIZE);
+  superBlock.inode[superBlock.ninode++] = inode_entry;
+
+  // save superblock to system
+  lseek(fileDescriptor, BLOCK_SIZE, SEEK_SET);
+  write(fileDescriptor, &superBlock, BLOCK_SIZE);
 }
 
 unsigned short getFreeInode(){
@@ -975,18 +1066,6 @@ unsigned int getFreeBlock(){
   }
 
   return acquired_free_data_block;
-}
-
-unsigned int getInodeAddr(unsigned short inode_entry, unsigned short num_inode_addr){
-  /*
-  * find the num of data block in certain inode based on its Addr index
-  */
-  
-  unsigned int data_block;
-  lseek(fileDescriptor, 2*BLOCK_SIZE + inode_entry*INODE_SIZE + 12 + 4*num_inode_addr, SEEK_SET);  //dirInode.addr[num_inode_addr] of superBlock
-  read(fileDescriptor, &data_block, 4);
-
-  return data_block;
 }
 
 int copyIn(char *parameters) {
@@ -1162,6 +1241,10 @@ int copyOut(char *parameters) {
 
   parameters = strtok(NULL, " ");
   vFile = parameters;
+  if(strlen(vFile) > 14){
+    printf("v6 filename cannot exceed 14 characters");
+    return 1;
+  }
   parameters = strtok(NULL, " ");
   extFilePath = parameters;
   
