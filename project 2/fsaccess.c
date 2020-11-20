@@ -217,7 +217,7 @@ int main() {
       }
 
       splitter = strtok(NULL, " ");
-      if(createDir(splitter)==0)
+      if(createDir(splitter))
         printf("\nDirectory successfully created!\n");
       splitter = NULL;
 
@@ -320,7 +320,7 @@ unsigned int createDir(char *parameters){
   dir_name = strtok_r(NULL, "/", &parameters);
   if(strlen(dir_name) > 14){
     printf("Directory names cannot exceed 14 characters");
-    return 1;
+    return 0;
   }
   if (parameters != NULL && parameters[0]=='\0')
     parameters = NULL;
@@ -484,7 +484,7 @@ unsigned int removeFile(char *rmFileName){
 
   if(strlen(rmFileName) > 14){
     printf("v6 filename cannot exceed 14 characters");
-    return 1;
+    return 0;
   }
   
   /*** go to the current directory path to check if v6 file exist, if file not exist, abort ***/
@@ -503,16 +503,16 @@ unsigned int removeFile(char *rmFileName){
       lseek(fileDescriptor, 2*BLOCK_SIZE+(rm_file_inode_entry-1)*INODE_SIZE,0);
       read(fileDescriptor,&flag,2);
       
-      // dir and plain type files won't have the same name
+      // dir and plain type files might have the same name
       if(flag >= (inode_alloc_flag | dir_flag)){
         printf("\nDeleted file type is a directory!\n");
-        readFileInode(rm_file_inode_entry);
         unsigned short file_entry;
         lseek(fileDescriptor, fileInode.addr[0]*BLOCK_SIZE + 16*2,SEEK_SET);
         read(fileDescriptor, &file_entry, 2);
         if (file_entry != 0){
           printf("But the directory is not empty. Can't be deleted! Keep finding...\n");
         } else {
+          readFileInode(rm_file_inode_entry);
           rmEmptyDir();
           break;
         }
@@ -536,9 +536,11 @@ unsigned int removeFile(char *rmFileName){
     read(fileDescriptor, existFilename, 14);
   }
 
-  if (existFilename[0] == '\0')
+  if (existFilename[0] == '\0'){
     printf("\nCorresponding file is not found!\n");
-  
+    return 0;
+  }
+
   // free the inode entry
   add_to_inode_list(rm_file_inode_entry);
 
@@ -560,6 +562,7 @@ unsigned int removeFile(char *rmFileName){
     read(fileDescriptor, tmp_dir.filename, 14);
   }
   
+  return 1;
 }
 
 void rmEmptyDir(){
@@ -606,7 +609,7 @@ unsigned int changeDir(char *parameters){
   dir_name = strtok_r(NULL, "/", &parameters);
   if(strlen(dir_name) > 14){
     printf("Directory names cannot exceed 14 characters");
-    return 1;
+    return 0;
   }
   if (parameters != NULL && parameters[0]=='\0')
     parameters = NULL;
@@ -1253,7 +1256,7 @@ int copyOut(char *parameters) {
   vFile = parameters;
   if(strlen(vFile) > 14){
     printf("v6 filename cannot exceed 14 characters");
-    return 1;
+    return 0;
   }
   parameters = strtok(NULL, " ");
   extFilePath = parameters;
