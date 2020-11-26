@@ -600,7 +600,7 @@ void rmPlainFile(){
 unsigned int changeDir(char *parameters){
   /*
   * change the global variable "currDirPath"
-  * support cd .././..
+  * support cd .././.. or /user/dir1/dir2
   */
   if (parameters == NULL)
     return 1;
@@ -1078,19 +1078,57 @@ int copyIn(char *parameters) {
   * create a new v6 file in file system 
   * copy the content byte by byte from external file into v6 file
   * update superBlock and store new v6 file I-node
+  * Have to support user/dir1/v6file
   */
 
-  char *extFilePath, *vFile;
+  char *extFilePath, *vFilePath;
 
   parameters = strtok(NULL, " ");
   extFilePath = parameters;
   parameters = strtok(NULL, " ");
-  vFile = parameters;
+  vFilePath = parameters;
 
-  if (strlen(vFile) > 14){
-    printf("The length of the v6 filename exceeds 14!\n");
+  // Decompose the vFilePath
+  short i,j = 0, pos_last_slash = -1, l = strlen(vFilePath);
+
+  for (i = l-1; i >= 0; i--){
+    if(vFilePath[i] == '/'){
+      pos_last_slash = i;
+      break;
+    }
+  }
+  
+  if(l-pos_last_slash-1 > 14){
+    printf("v6 filename cannot exceed 14 characters");
     return 0;
   }
+
+  char *vFile = malloc(l-pos_last_slash);
+  for (i = pos_last_slash + 1; i < l; i++){
+    vFile[j] = vFilePath[i];
+    j++;
+  }
+
+  for (j; j < strlen(vFile); j++)
+    vFile[j] = '\0';
+
+  if (pos_last_slash != -1){
+    char *path = malloc(pos_last_slash+1);
+    for (i = 0; i < pos_last_slash; i++){
+      path[i] = vFilePath[i];
+    }
+
+    for (i; i < strlen(path); i++)
+      path[i] = '\0';
+    
+    if(!changeDir(path))
+      return 0;
+  }
+
+  /*printf("%hu, %hu\n", pos_last_slash, l);
+  printf("%s\n", path);
+  printf("%s\n", vFile);
+  printf("%s\n", vFilePath);*/
   
   if((fileDescriptor = open(v6FileName,O_RDWR,0700))== -1){
     printf("\n v6 file system open() failed with the following error [%s]\n",strerror(errno));
@@ -1159,7 +1197,6 @@ int copyIn(char *parameters) {
   file_inode.size = INODE_SIZE;
   file_inode.addr[0] = vFile_data_block;
   
-  int i;
   for( i = 1; i < ADDR_SIZE; i++ ) {
     file_inode.addr[i] = 0;
   }
@@ -1250,16 +1287,55 @@ int copyOut(char *parameters) {
   * stop when enters '\0' character
   */
 
-  char *extFilePath, *vFile;
+  char *extFilePath, *vFilePath;
 
   parameters = strtok(NULL, " ");
-  vFile = parameters;
-  if(strlen(vFile) > 14){
+  vFilePath = parameters;
+  parameters = strtok(NULL, " ");
+  extFilePath = parameters;
+  
+  // Decompose the vFilePath
+  short i,j = 0, pos_last_slash = -1, l = strlen(vFilePath);
+
+  for (i = l-1; i >= 0; i--){
+    if(vFilePath[i] == '/'){
+      pos_last_slash = i;
+      break;
+    }
+  }
+  
+  if(l-pos_last_slash-1 > 14){
     printf("v6 filename cannot exceed 14 characters");
     return 0;
   }
-  parameters = strtok(NULL, " ");
-  extFilePath = parameters;
+
+  char *vFile = malloc(l-pos_last_slash);
+  for (i = pos_last_slash + 1; i < l; i++){
+    vFile[j] = vFilePath[i];
+    j++;
+  }
+  
+  for (j; j < strlen(vFile); j++)
+    vFile[j] = '\0';
+  
+  if (pos_last_slash != -1){
+    char *path = malloc(pos_last_slash+1);
+    for (i = 0; i < pos_last_slash; i++){
+      path[i] = vFilePath[i];
+    }
+
+    for (i; i < strlen(path); i++)
+      path[i] = '\0';
+    
+    /*printf("%s\n", path);
+    printf("%h, %h\n", pos_last_slash, l);
+    printf("%s\n", vFile);
+    printf("%s\n", vFilePath);*/
+
+    if(!changeDir(path))
+      return 0;
+  }
+  
   
   if((fileDescriptor = open(v6FileName,O_RDWR,0700))== -1){
     printf("\n v6 file system open() failed with the following error [%s]\n",strerror(errno));
