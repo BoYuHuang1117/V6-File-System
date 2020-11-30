@@ -6,7 +6,20 @@
 - identify the order of each children process
 - parent process waits until all the children processes terminates
 
-### Project 2 is about v6-file system
+### Project 2
+### ------A Modified Version of the UNIX V6 File System------
+
+#### _File name is limited to 14 characters._
+
+Design Parameters:
+
+1. The size of the superblock is 1024 bytes.
+2. The size of a block is 1024 bytes.
+3. The size of the free block array is 152.
+4. The size of the inode array is 200.
+5. The size of available block address in inode is 11.
+6. The size of the inode structure is doubled to 64 bytes.
+7. The size of a directory information is 16 bytes (2 for inode entry, 14 for filename).
 
 ***************************
  * Compilation: -$ gcc -o fsaccess fsaccess.c  
@@ -52,5 +65,3 @@
 - *q*
 
   This command saves all changes and quit.
-  
-#### File name is limited to 14 characters.
