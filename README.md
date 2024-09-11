@@ -2,14 +2,13 @@
 
 [![Build Status](https://travis-ci.org/{BoYuHuang1117}/{V6-File-System}.png?branch=master)](https://travis-ci.org/{BoYuHuang1117}/{V6-File-System})
 
-### Project 1 is about fork system call.
+### Project 1: Practice fork system call.
 
 - using for loop to create five children process
 - identify the order of each children process
 - parent process waits until all the children processes terminates
 
-### Project 2
-### ------A Modified Version of the UNIX V6 File System------
+### Project 2: A Modified Version of the UNIX V6 File System
 
 #### _File name is limited to 14 characters._
 
@@ -24,11 +23,13 @@ Design Parameters:
 7. The size of a directory information is 16 bytes (2 for inode entry, 14 for filename).
 
 ***************************
- * Compilation: -$ gcc -o fsaccess fsaccess.c  
- * Run using: -$ ./fsaccess  
+```
+ * Compilation: gcc -o fsaccess fsaccess.c  
+ * Run using: ./fsaccess  
+```
 ***********************************************************************
 
-> main functions
+> main functions and capabilities
 
 - *initfs (filepath) (# of blocks) (# of I-nodes)*
 

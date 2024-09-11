@@ -43,7 +43,7 @@ int main(){
     else {
         // parent process, p equals to the PID of the last child 
         
-        printf(""); // print nothing if it's the origin parent process
+        printf("Parent pid: %d \n", getpid()); // print nothing if it's the origin parent process
         sleep(1);
         // wait();  // guarantee to wait for all the children to finish first
         
